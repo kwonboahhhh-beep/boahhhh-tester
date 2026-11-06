@@ -52,15 +52,21 @@ def train_model(data: pd.DataFrame):
     X = data[["price", "quantity"]]
     y = data["order_amount"]
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X, y, test_size=0.5, random_state=42
     )
     model = LinearRegression()
     model.fit(X_train, y_train)
     pred = model.predict(X_test)
-    return model, r2_score(y_test, pred), mean_absolute_error(y_test, pred)
+    return (
+        model,
+        r2_score(y_test, pred),
+        mean_absolute_error(y_test, pred),
+        len(X_train),
+        len(X_test),
+    )
 
 
-model, r2, mae = train_model(df)
+model, r2, mae, n_train, n_test = train_model(df)
 
 # ---------- 슬라이더 범위: 데이터의 최솟값 ~ 최댓값 ----------
 p_min, p_max = float(df["price"].min()), float(df["price"].max())
@@ -145,6 +151,9 @@ st.dataframe(
 
 # ---------- 모델 정보 ----------
 with st.expander("모델 성능 및 계수"):
+    st.write(
+        f"데이터 분할: 학습용 {n_train:,}행(50%) / 테스트용 {n_test:,}행(50%)"
+    )
     m1, m2 = st.columns(2)
     m1.metric("R² (테스트)", f"{r2:.4f}")
     m2.metric("MAE (테스트)", f"{mae:,.2f}")
@@ -158,3 +167,4 @@ with st.expander("모델 성능 및 계수"):
 with st.expander("데이터 미리보기"):
     st.write(f"행 수: {len(df):,}")
     st.dataframe(df[["price", "quantity", "order_amount"]].head(50))
+    
