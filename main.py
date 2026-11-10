@@ -65,16 +65,25 @@ def train_models(data: pd.DataFrame):
     )
     model = LinearRegression().fit(X_train, y_train)
     pred = model.predict(X_test)
+    test_result = pd.DataFrame(
+        {
+            "price": X_test["price"].values,
+            "quantity": X_test["quantity"].values,
+            "actual": y_test,
+            "predicted": pred,
+        }
+    )
     return (
         model,
         r2_score(y_test, pred),
         mean_absolute_error(y_test, pred),
         len(X_train),
         len(X_test),
+        test_result,
     )
 
 
-model, r2, mae, n_train, n_test = train_models(df)
+model, r2, mae, n_train, n_test, test_result = train_models(df)
 
 # ---------- 슬라이더 범위: 데이터의 최솟값 ~ 최댓값 ----------
 p_min, p_max = float(df["price"].min()), float(df["price"].max())
@@ -198,6 +207,48 @@ if "category" in df.columns:
     st.plotly_chart(fig_cat, use_container_width=True)
 else:
     st.warning("'category' 컬럼이 없어 카테고리별 그래프를 그릴 수 없습니다.")
+
+# 2) 테스트 데이터: 실제 주문 금액 vs 예측값
+st.markdown("**2. 테스트 데이터: 실제 주문 금액 vs 예측값**")
+fig_sc = px.scatter(
+    test_result,
+    x="actual",
+    y="predicted",
+    opacity=0.45,
+    hover_data={"price": ":,.2f", "quantity": True, "actual": ":,.2f", "predicted": ":,.2f"},
+    labels={
+        "actual": "실제 주문 금액",
+        "predicted": "예측 주문 금액",
+        "price": "가격",
+        "quantity": "수량",
+    },
+)
+# 완벽한 예측선 (y = x)
+axis_min = float(min(test_result["actual"].min(), test_result["predicted"].min()))
+axis_max = float(max(test_result["actual"].max(), test_result["predicted"].max()))
+fig_sc.add_shape(
+    type="line",
+    x0=axis_min,
+    y0=axis_min,
+    x1=axis_max,
+    y1=axis_max,
+    line=dict(color="red", dash="dash"),
+)
+fig_sc.add_annotation(
+    x=axis_max,
+    y=axis_max,
+    text="완벽한 예측 (y = x)",
+    showarrow=False,
+    xanchor="right",
+    yanchor="bottom",
+    font=dict(color="red"),
+)
+fig_sc.update_layout(xaxis_tickformat=",", yaxis_tickformat=",")
+st.plotly_chart(fig_sc, use_container_width=True)
+st.caption(
+    f"테스트 데이터 {n_test:,}건 · 점이 빨간 점선에 가까울수록 예측이 정확합니다. "
+    f"(R² {r2:.4f}, MAE {mae:,.2f})"
+)
 
 with st.expander("데이터 미리보기"):
     st.write(f"행 수: {len(df):,}")
