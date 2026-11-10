@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 
 DEFAULT_CSV = "ecommerce_orders_clean.csv"
@@ -249,6 +249,71 @@ st.caption(
     f"테스트 데이터 {n_test:,}건 · 점이 빨간 점선에 가까울수록 예측이 정확합니다. "
     f"(R² {r2:.4f}, MAE {mae:,.2f})"
 )
+
+# ---------- 모델 성능 평가 (테스트 데이터에서 무작위 100개) ----------
+st.subheader("🧪 모델 성능 평가")
+SAMPLE_N = 100
+
+if "eval_seed" not in st.session_state:
+    st.session_state.eval_seed = 0
+if "show_full_table" not in st.session_state:
+    st.session_state.show_full_table = False
+
+
+def redraw_sample():
+    st.session_state.eval_seed += 1
+
+
+def toggle_full_table():
+    st.session_state.show_full_table = not st.session_state.show_full_table
+
+
+n_sample = min(SAMPLE_N, len(test_result))
+sample = test_result.sample(
+    n=n_sample, random_state=st.session_state.eval_seed
+).reset_index(drop=True)
+
+eval_df = pd.DataFrame(
+    {
+        "실제값": sample["actual"],
+        "예측값": sample["predicted"],
+    }
+)
+eval_df["오차"] = eval_df["실제값"] - eval_df["예측값"]  # 실제 - 예측
+eval_df["절댓값"] = eval_df["오차"].abs()  # 절대 오차
+eval_df["제곱"] = eval_df["오차"] ** 2  # 제곱 오차
+eval_df.index = eval_df.index + 1
+eval_df.index.name = "번호"
+
+s_mae = mean_absolute_error(eval_df["실제값"], eval_df["예측값"])
+s_mse = mean_squared_error(eval_df["실제값"], eval_df["예측값"])
+s_r2 = r2_score(eval_df["실제값"], eval_df["예측값"])
+
+e1, e2, e3 = st.columns(3)
+e1.metric("MAE (평균 절대 오차)", f"{s_mae:,.2f}")
+e2.metric("MSE (평균 제곱 오차)", f"{s_mse:,.2f}")
+e3.metric("R²", f"{s_r2:.4f}")
+
+fmt = {c: "{:,.2f}" for c in eval_df.columns}
+
+t1, t2, t3 = st.columns([1, 1, 3])
+t1.button("🔄 다시 뽑기", on_click=redraw_sample, use_container_width=True)
+t2.button(
+    "📂 전체 접기" if st.session_state.show_full_table else "📂 전체 보기",
+    on_click=toggle_full_table,
+    use_container_width=True,
+)
+t3.markdown(
+    f"**테스트 데이터에서 무작위 {n_sample}개** (뽑기 #{st.session_state.eval_seed + 1})"
+)
+
+if st.session_state.show_full_table:
+    st.caption(f"전체 {n_sample}행")
+    st.dataframe(eval_df.style.format(fmt), use_container_width=True, height=400)
+else:
+    st.caption(f"앞 10행만 표시 (전체 {n_sample}행)")
+    st.dataframe(eval_df.head(10).style.format(fmt), use_container_width=True)
+st.caption("오차 = 실제값 − 예측값 · 절댓값 = |오차| · 제곱 = 오차²")
 
 with st.expander("데이터 미리보기"):
     st.write(f"행 수: {len(df):,}")
