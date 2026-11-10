@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
@@ -14,7 +15,7 @@ OUTLIER_IQR_K = 1.0  # 이상치 제외 기준 (Q3 + k*IQR 초과 / Q1 - k*IQR �
 
 st.set_page_config(page_title="주문 금액 예측기", page_icon="🛒", layout="centered")
 st.title("🛒 주문 금액 예측기")
-st.caption("가격(price)과 수량(quantity)으로 주문 금액을 예측하는 선형 회귀 모델")
+st.caption("가격(price)과 수량(quantity)으로 주문 금액을 예측하는 모델 (선형 회귀 vs 그래디언트 부스팅)")
 
 
 def iqr_bounds(series: pd.Series, k: float):
@@ -103,8 +104,28 @@ def train_models(data: pd.DataFrame):
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.5, random_state=42
     )
-    model = LinearRegression().fit(X_train, y_train)
-    pred = model.predict(X_test)
+
+    # 기준 모델: 선형 회귀
+    base = LinearRegression().fit(X_train, y_train)
+    base_pred = base.predict(X_test)
+
+    # 개선 모델: 그래디언트 부스팅 (가격×수량 같은 비선형 관계를 학습)
+    improved = GradientBoostingRegressor(
+        n_estimators=300, learning_rate=0.1, max_depth=3, random_state=42
+    ).fit(X_train, y_train)
+    pred = improved.predict(X_test)
+
+    comparison = pd.DataFrame(
+        {
+            "모델": ["기준: 선형 회귀", "개선: 그래디언트 부스팅"],
+            "R²": [r2_score(y_test, base_pred), r2_score(y_test, pred)],
+            "MAE": [
+                mean_absolute_error(y_test, base_pred),
+                mean_absolute_error(y_test, pred),
+            ],
+        }
+    ).set_index("모델")
+
     test_result = pd.DataFrame(
         {
             "price": X_test["price"].values,
@@ -114,16 +135,17 @@ def train_models(data: pd.DataFrame):
         }
     )
     return (
-        model,
+        improved,
         r2_score(y_test, pred),
         mean_absolute_error(y_test, pred),
         len(X_train),
         len(X_test),
         test_result,
+        comparison,
     )
 
 
-model, r2, mae, n_train, n_test, test_result = train_models(df)
+model, r2, mae, n_train, n_test, test_result, comparison = train_models(df)
 
 # ---------- 슬라이더 범위: 데이터의 최솟값 ~ 최댓값 ----------
 p_min, p_max = float(df["price"].min()), float(df["price"].max())
@@ -219,12 +241,11 @@ with st.expander("모델 성능 (테스트 데이터 기준)", expanded=True):
     m1, m2 = st.columns(2)
     m1.metric("R² (테스트)", f"{r2:.4f}")
     m2.metric("MAE (테스트)", f"{mae:,.2f}")
-    st.write(
-        f"절편: {model.intercept_:,.4f} / 가격 계수: {model.coef_[0]:,.4f} / "
-        f"수량 계수: {model.coef_[1]:,.4f}"
-    )
+    st.dataframe(comparison.style.format({"R²": "{:.4f}", "MAE": "{:,.2f}"}))
     st.caption(
-        "주문 금액은 가격×수량(곱셈)이라 가격·수량만 쓰는 선형 모델은 오차가 생깁니다."
+        "주문 금액은 가격×수량(곱셈)이라 선형 회귀는 오차가 큽니다. "
+        "그래디언트 부스팅은 비선형 관계를 학습해 오차를 줄이며, "
+        "예측·그래프·성능 평가에는 개선 모델이 사용됩니다."
     )
 
 # ---------- 그래프 ----------
