@@ -17,19 +17,59 @@ st.title("🛒 주문 금액 예측기")
 st.caption("가격(price)과 수량(quantity)으로 주문 금액을 예측하는 선형 회귀 모델")
 
 
+def iqr_bounds(series: pd.Series, k: float):
+    q1, q3 = series.quantile([0.25, 0.75])
+    iqr = q3 - q1
+    return q1 - k * iqr, q3 + k * iqr
+
+
 @st.cache_data
 def load_data(source):
+    """데이터 전처리 파이프라인. (정제된 df, 단계별 로그 표)를 반환한다."""
     df = pd.read_csv(source)
-    df = df.dropna(subset=["price", "quantity"]).copy()
-    # 주문금액 = 가격 x 수량
+    log = [("원본 데이터", len(df), 0)]
+
+    def record(name, before, after):
+        log.append((name, after, before - after))
+
+    # 1) 가격·수량을 숫자로 변환 (변환 불가 값은 결측 처리)
+    for col in ["price", "quantity"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # 2) 결측치 제거
+    n = len(df)
+    df = df.dropna(subset=["price", "quantity"])
+    record("결측치 제거 (가격·수량)", n, len(df))
+
+    # 3) 중복 행 제거
+    n = len(df)
+    df = df.drop_duplicates()
+    if "order_id" in df.columns:
+        df = df.drop_duplicates(subset="order_id")
+    record("중복 제거", n, len(df))
+
+    # 4) 비정상 값 제거 (가격·수량이 0 이하)
+    n = len(df)
+    df = df[(df["price"] > 0) & (df["quantity"] > 0)]
+    record("비정상 값 제거 (가격·수량 ≤ 0)", n, len(df))
+
+    # 5) 카테고리 문자열 공백 정리
+    if "category" in df.columns:
+        df["category"] = df["category"].astype(str).str.strip()
+
+    # 6) 주문금액 = 가격 x 수량
+    df = df.copy()
     df["order_amount"] = df["price"] * df["quantity"]
 
-    # 이상치 제거: 주문금액 기준, 너무 큰 이상치만 제외 (IQR의 3배 기준)
-    q1, q3 = df["order_amount"].quantile([0.25, 0.75])
-    iqr = q3 - q1
-    low, high = q1 - OUTLIER_IQR_K * iqr, q3 + OUTLIER_IQR_K * iqr
-    mask = df["order_amount"].between(low, high)
-    return df[mask].copy(), int((~mask).sum()), len(mask)
+    # 7) 이상치 제거 (IQR 기준): 가격, 수량, 주문금액
+    for col, label in [("price", "가격"), ("quantity", "수량"), ("order_amount", "주문금액")]:
+        n = len(df)
+        low, high = iqr_bounds(df[col], OUTLIER_IQR_K)
+        df = df[df[col].between(low, high)]
+        record(f"이상치 제거 ({label}, {low:,.1f} ~ {high:,.1f})", n, len(df))
+
+    log_df = pd.DataFrame(log, columns=["단계", "남은 행 수", "제거된 행 수"])
+    return df.reset_index(drop=True), log_df
 
 
 # ---------- 데이터 불러오기 ----------
@@ -47,7 +87,7 @@ if source is None:
     st.info("데이터 파일을 기다리는 중입니다.")
     st.stop()
 
-df, n_outliers, n_raw = load_data(source)
+df, prep_log = load_data(source)
 
 missing = {"price", "quantity"} - set(df.columns)
 if missing:
@@ -165,13 +205,17 @@ st.dataframe(
     use_container_width=True,
 )
 
+# ---------- 전처리 결과 ----------
+with st.expander("🧹 데이터 전처리 결과", expanded=False):
+    st.dataframe(prep_log.set_index("단계"), use_container_width=True)
+    st.caption(
+        f"원본 {prep_log.iloc[0, 1]:,}행 → 전처리 후 {len(df):,}행 "
+        f"(이상치 기준: Q1−{OUTLIER_IQR_K:g}×IQR ~ Q3+{OUTLIER_IQR_K:g}×IQR)"
+    )
+
 # ---------- 모델 정보 ----------
 with st.expander("모델 성능 (테스트 데이터 기준)", expanded=True):
     st.write(f"데이터 분할: 학습용 {n_train:,}행(50%) / 테스트용 {n_test:,}행(50%)")
-    st.write(
-        f"이상치 제외: 전체 {n_raw:,}행 중 {n_outliers:,}행 제외 "
-        f"(주문금액이 Q3+{OUTLIER_IQR_K:g}×IQR 초과 또는 Q1−{OUTLIER_IQR_K:g}×IQR 미만)"
-    )
     m1, m2 = st.columns(2)
     m1.metric("R² (테스트)", f"{r2:.4f}")
     m2.metric("MAE (테스트)", f"{mae:,.2f}")
