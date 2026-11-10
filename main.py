@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 
 DEFAULT_CSV = "ecommerce_orders_clean.csv"
 FEATURES = ["price", "quantity"]
-OUTLIER_IQR_K = 3.0  # 너무 큰 이상치만 제외 (Q3 + 3*IQR 초과 / Q1 - 3*IQR 미만)
+OUTLIER_IQR_K = 1.5  # 이상치 제외 기준 (Q3 + k*IQR 초과 / Q1 - k*IQR 미만), 작을수록 엄격
 
 st.set_page_config(page_title="주문 금액 예측기", page_icon="🛒", layout="centered")
 st.title("🛒 주문 금액 예측기")
