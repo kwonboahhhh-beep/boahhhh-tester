@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, r2_score
@@ -184,6 +185,31 @@ with st.expander("모델 성능 비교 (테스트 데이터 기준)", expanded=T
         "주문 금액은 가격×수량(곱셈)이라 가격·수량만 쓰는 선형 모델은 오차가 큽니다. "
         "곱셈 특성을 추가하면 같은 선형 회귀로도 관계를 정확히 표현할 수 있습니다."
     )
+
+# ---------- 그래프 ----------
+st.subheader("📊 데이터 분석 그래프")
+
+# 1) 카테고리별 총 주문 금액
+st.markdown("**1. 카테고리별 총 주문 금액**")
+if "category" in df.columns:
+    cat_total = (
+        df.groupby("category", as_index=False)["order_amount"]
+        .sum()
+        .sort_values("order_amount", ascending=False)
+    )
+    fig_cat = px.bar(
+        cat_total,
+        x="category",
+        y="order_amount",
+        color="category",
+        text="order_amount",
+        labels={"category": "카테고리", "order_amount": "총 주문 금액"},
+    )
+    fig_cat.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+    fig_cat.update_layout(showlegend=False, yaxis_tickformat=",")
+    st.plotly_chart(fig_cat, use_container_width=True)
+else:
+    st.warning("'category' 컬럼이 없어 카테고리별 그래프를 그릴 수 없습니다.")
 
 with st.expander("데이터 미리보기"):
     st.write(f"행 수: {len(df):,}")
