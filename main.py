@@ -341,8 +341,13 @@ fig_bin = px.bar(
 )
 fig_bin.update_traces(texttemplate="%{text:.2f}", textposition="outside")
 fig_bin.update_layout(showlegend=False)
-fig_bin.update_yaxes(rangemode="tozero")
+# 세로축을 0부터 시작하지 않고 값이 몰린 구간만 확대해 차이를 크게 보이게 함
+_y_min = float(qty_by_price["avg_quantity"].min())
+_y_max = float(qty_by_price["avg_quantity"].max())
+_pad = max((_y_max - _y_min) * 0.3, 0.01)
+fig_bin.update_yaxes(range=[_y_min - _pad, _y_max + _pad])
 st.plotly_chart(fig_bin, use_container_width=True)
+st.caption("⚠️ 차이를 잘 보이게 하려고 세로축을 0이 아닌 값에서 시작했습니다. 막대 길이 비율은 실제 비율과 다릅니다.")
 
 _hi = qty_by_price.loc[qty_by_price["avg_quantity"].idxmax()]
 _lo = qty_by_price.loc[qty_by_price["avg_quantity"].idxmin()]
