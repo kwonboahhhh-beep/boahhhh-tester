@@ -381,8 +381,13 @@ if "customer_segment" in df.columns:
     )
     fig_seg.update_traces(texttemplate="%{text:,.2f}", textposition="outside")
     fig_seg.update_layout(showlegend=False, yaxis_tickformat=",")
-    fig_seg.update_yaxes(rangemode="tozero")
+    # 세로축을 0부터 시작하지 않고 값이 몰린 구간만 확대해 차이를 크게 보이게 함
+    _s_min = float(seg_avg["avg_amount"].min())
+    _s_max = float(seg_avg["avg_amount"].max())
+    _s_pad = max((_s_max - _s_min) * 0.3, 0.01)
+    fig_seg.update_yaxes(range=[_s_min - _s_pad, _s_max + _s_pad])
     st.plotly_chart(fig_seg, use_container_width=True)
+    st.caption("⚠️ 차이를 잘 보이게 하려고 세로축을 0이 아닌 값에서 시작했습니다. 막대 길이 비율은 실제 비율과 다릅니다.")
 else:
     st.warning("'customer_segment' 컬럼이 없어 고객 유형별 그래프를 그릴 수 없습니다.")
 
