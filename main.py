@@ -358,6 +358,34 @@ st.caption(
     f"차이는 {_gap:.1f}%입니다."
 )
 
+# 4) 고객 유형별 평균 주문 금액
+st.markdown("**4. 고객 유형별 평균 주문 금액**")
+if "customer_segment" in df.columns:
+    seg_avg = (
+        df.groupby("customer_segment", as_index=False)
+        .agg(avg_amount=("order_amount", "mean"), count=("order_amount", "size"))
+        .sort_values("avg_amount", ascending=False)
+    )
+    fig_seg = px.bar(
+        seg_avg,
+        x="customer_segment",
+        y="avg_amount",
+        color="customer_segment",
+        text="avg_amount",
+        hover_data={"count": ":,", "avg_amount": ":,.2f", "customer_segment": False},
+        labels={
+            "customer_segment": "고객 유형",
+            "avg_amount": "평균 주문 금액",
+            "count": "주문 건수",
+        },
+    )
+    fig_seg.update_traces(texttemplate="%{text:,.2f}", textposition="outside")
+    fig_seg.update_layout(showlegend=False, yaxis_tickformat=",")
+    fig_seg.update_yaxes(rangemode="tozero")
+    st.plotly_chart(fig_seg, use_container_width=True)
+else:
+    st.warning("'customer_segment' 컬럼이 없어 고객 유형별 그래프를 그릴 수 없습니다.")
+
 # ---------- 모델 성능 평가 (테스트 데이터에서 무작위 100개) ----------
 st.subheader("🧪 모델 성능 평가")
 SAMPLE_N = 100
