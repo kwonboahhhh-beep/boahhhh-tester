@@ -315,6 +315,44 @@ st.caption(
     f"(R² {r2:.4f}, MAE {mae:,.2f})"
 )
 
+# 3) 가격 구간(5개)별 평균 수량
+st.markdown("**3. 가격 구간별 평균 수량**")
+price_bins = pd.cut(df["price"], bins=5)  # 가격 범위를 5개 구간으로 균등 분할
+bin_labels = [f"{iv.left:,.0f} ~ {iv.right:,.0f}" for iv in price_bins.cat.categories]
+price_bins = price_bins.cat.rename_categories(bin_labels)
+qty_by_price = (
+    df.assign(price_bin=price_bins)
+    .groupby("price_bin", observed=False)["quantity"]
+    .agg(avg_quantity="mean", count="size")
+    .reset_index()
+)
+fig_bin = px.bar(
+    qty_by_price,
+    x="price_bin",
+    y="avg_quantity",
+    color="price_bin",
+    text="avg_quantity",
+    hover_data={"count": ":,", "avg_quantity": ":.3f", "price_bin": False},
+    labels={
+        "price_bin": "가격 구간",
+        "avg_quantity": "평균 수량",
+        "count": "주문 건수",
+    },
+)
+fig_bin.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+fig_bin.update_layout(showlegend=False)
+fig_bin.update_yaxes(rangemode="tozero")
+st.plotly_chart(fig_bin, use_container_width=True)
+
+_hi = qty_by_price.loc[qty_by_price["avg_quantity"].idxmax()]
+_lo = qty_by_price.loc[qty_by_price["avg_quantity"].idxmin()]
+_gap = (_hi["avg_quantity"] - _lo["avg_quantity"]) / _lo["avg_quantity"] * 100
+st.caption(
+    f"💡 평균 수량은 가격 {_hi['price_bin']} 구간이 {_hi['avg_quantity']:.2f}개로 가장 많고, "
+    f"{_lo['price_bin']} 구간이 {_lo['avg_quantity']:.2f}개로 가장 적으며 "
+    f"차이는 {_gap:.1f}%입니다."
+)
+
 # ---------- 모델 성능 평가 (테스트 데이터에서 무작위 100개) ----------
 st.subheader("🧪 모델 성능 평가")
 SAMPLE_N = 100
