@@ -12,11 +12,12 @@ from sklearn.model_selection import train_test_split
 DEFAULT_CSV = "ecommerce_orders_clean.csv"
 FEATURES = ["price", "quantity"]
 OUTLIER_IQR_K = 1.0  # 이상치 제외 기준 (Q3 + k*IQR 초과 / Q1 - k*IQR 미만), 작을수록 엄격
-CURRENCY_UNIT = "달러"  # 금액 단위 표시 (데이터에 통화 정보가 없어 미국 데이터로 보고 달러로 설정)
+CURRENCY_UNIT = "$"  # 금액 단위 기호 (데이터에 통화 정보가 없어 미국 데이터로 보고 $로 설정)
 
 
 def money(x, digits=2):
-    return f"{x:,.{digits}f} {CURRENCY_UNIT}"
+    sign = "-" if x < 0 else ""
+    return f"{sign}{CURRENCY_UNIT}{abs(x):,.{digits}f}"
 
 
 st.set_page_config(page_title="주문 금액 예측기", page_icon="🛒", layout="centered")
@@ -69,15 +70,19 @@ def load_data(source):
     df["order_amount"] = df["price"] * df["quantity"]
 
     # 7) 이상치 제거 (IQR 기준): 가격, 수량, 주문금액
-    for col, label, unit in [
-        ("price", "가격", f" {CURRENCY_UNIT}"),
-        ("quantity", "수량", ""),
-        ("order_amount", "주문금액", f" {CURRENCY_UNIT}"),
+    for col, label, is_money in [
+        ("price", "가격", True),
+        ("quantity", "수량", False),
+        ("order_amount", "주문금액", True),
     ]:
         n = len(df)
         low, high = iqr_bounds(df[col], OUTLIER_IQR_K)
         df = df[df[col].between(low, high)]
-        record(f"이상치 제거 ({label}, {low:,.1f} ~ {high:,.1f}{unit})", n, len(df))
+        if is_money:
+            rng = f"{money(low, 1)} ~ {money(high, 1)}"
+        else:
+            rng = f"{low:,.1f} ~ {high:,.1f}"
+        record(f"이상치 제거 ({label}, {rng})", n, len(df))
 
     log_df = pd.DataFrame(log, columns=["단계", "남은 행 수", "제거된 행 수"])
     return df.reset_index(drop=True), log_df
@@ -234,7 +239,7 @@ c1.metric("총 예측 주문 금액", money(total_pred))
 c2.metric(
     "총 계산값 (가격×수량)",
     money(total_calc),
-    delta=f"{total_pred - total_calc:,.2f} {CURRENCY_UNIT} (오차)",
+    delta=f"{money(total_pred - total_calc)} (오차)",
 )
 
 st.dataframe(
@@ -293,7 +298,7 @@ if "category" in df.columns:
         text="order_amount",
         labels={"category": "카테고리", "order_amount": f"총 주문 금액 ({CURRENCY_UNIT})"},
     )
-    fig_cat.update_traces(texttemplate="%{text:,.0f} " + CURRENCY_UNIT, textposition="outside")
+    fig_cat.update_traces(texttemplate=CURRENCY_UNIT + "%{text:,.0f}", textposition="outside")
     fig_cat.update_layout(showlegend=False, yaxis_tickformat=",")
     st.plotly_chart(fig_cat, use_container_width=True)
     _c_hi = cat_total.iloc[0]
@@ -363,7 +368,9 @@ st.caption(
 # 3) 가격 구간(5개)별 평균 수량
 st.markdown("**3. 가격 구간별 평균 수량**")
 price_bins = pd.cut(df["price"], bins=5)  # 가격 범위를 5개 구간으로 균등 분할
-bin_labels = [f"{iv.left:,.0f} ~ {iv.right:,.0f}" for iv in price_bins.cat.categories]
+bin_labels = [
+    f"{money(iv.left, 0)} ~ {money(iv.right, 0)}" for iv in price_bins.cat.categories
+]
 price_bins = price_bins.cat.rename_categories(bin_labels)
 qty_by_price = (
     df.assign(price_bin=price_bins)
@@ -379,7 +386,7 @@ fig_bin = px.bar(
     text="avg_quantity",
     hover_data={"count": ":,", "avg_quantity": ":.3f", "price_bin": False},
     labels={
-        "price_bin": f"가격 구간 ({CURRENCY_UNIT})",
+        "price_bin": "가격 구간",
         "avg_quantity": "평균 수량",
         "count": "주문 건수",
     },
@@ -398,8 +405,8 @@ _hi = qty_by_price.loc[qty_by_price["avg_quantity"].idxmax()]
 _lo = qty_by_price.loc[qty_by_price["avg_quantity"].idxmin()]
 _gap = (_hi["avg_quantity"] - _lo["avg_quantity"]) / _lo["avg_quantity"] * 100
 st.caption(
-    f"💡 평균 수량은 가격 {_hi['price_bin']} {CURRENCY_UNIT} 구간이 {_hi['avg_quantity']:.2f}개로 가장 많고, "
-    f"{_lo['price_bin']} {CURRENCY_UNIT} 구간이 {_lo['avg_quantity']:.2f}개로 가장 적으며 "
+    f"💡 평균 수량은 가격 {_hi['price_bin']} 구간이 {_hi['avg_quantity']:.2f}개로 가장 많고, "
+    f"{_lo['price_bin']} 구간이 {_lo['avg_quantity']:.2f}개로 가장 적으며 "
     f"차이는 {_gap:.1f}%입니다."
 )
 
@@ -424,7 +431,7 @@ if "customer_segment" in df.columns:
             "count": "주문 건수",
         },
     )
-    fig_seg.update_traces(texttemplate="%{text:,.2f} " + CURRENCY_UNIT, textposition="outside")
+    fig_seg.update_traces(texttemplate=CURRENCY_UNIT + "%{text:,.2f}", textposition="outside")
     fig_seg.update_layout(showlegend=False, yaxis_tickformat=",")
     # 세로축을 0부터 시작하지 않고 값이 몰린 구간만 확대해 차이를 크게 보이게 함
     _s_min = float(seg_avg["avg_amount"].min())
@@ -477,7 +484,7 @@ s_r2 = r2_score(eval_df["실제값"], eval_df["예측값"])
 
 e1, e2, e3 = st.columns(3)
 e1.metric("MAE (평균 절대 오차)", money(s_mae))
-e2.metric("MSE (평균 제곱 오차)", f"{s_mse:,.2f} {CURRENCY_UNIT}²")
+e2.metric("MSE (평균 제곱 오차)", f"{CURRENCY_UNIT}{s_mse:,.2f}²")
 e3.metric("R²", f"{s_r2:.4f}")
 
 eval_df = eval_df.rename(
